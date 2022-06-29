@@ -88,6 +88,13 @@ func MakeReceiveAdapter(args *ReceiveAdapterArgs) *v1.Deployment {
 
 	env = appendEnvFromSecretKeyRef(env, "KAFKA_NET_SASL_USER", args.Source.Spec.Net.SASL.User.SecretKeyRef)
 	env = appendEnvFromSecretKeyRef(env, "KAFKA_NET_SASL_PASSWORD", args.Source.Spec.Net.SASL.Password.SecretKeyRef)
+
+	// TODO kafka client configuration and building seems scattered all around
+	// in different shapes. This is being hard to figure out
+
+	// env = appendEnvFromSecretKeyRef(env, "KAFKA_NET_SASL_KERBEROS_KEYTAB", args.Source.Spec.Net.GSSAPI.KerberosKeyTab.SecretKeyRef)
+	// env = appendEnvFromSecretKeyRef(env, "KAFKA_NET_SASL_KERBEROS_PRINCIPAL", args.Source.Spec.Net.GSSAPI.KerberosPrincipal.SecretKeyRef)
+
 	env = appendEnvFromSecretKeyRef(env, "KAFKA_NET_SASL_TYPE", args.Source.Spec.Net.SASL.Type.SecretKeyRef)
 	env = appendEnvFromSecretKeyRef(env, "KAFKA_NET_TLS_CERT", args.Source.Spec.Net.TLS.Cert.SecretKeyRef)
 	env = appendEnvFromSecretKeyRef(env, "KAFKA_NET_TLS_KEY", args.Source.Spec.Net.TLS.Key.SecretKeyRef)

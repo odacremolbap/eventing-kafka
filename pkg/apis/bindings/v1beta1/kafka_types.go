@@ -62,6 +62,32 @@ type KafkaSASLSpec struct {
 	Type SecretValueFromSource `json:"type,omitempty"`
 }
 
+// KafkaSASLGSSAPISpec contains the SASL/GSSAPI parameters.
+type KafkaSASLGSSAPISpec struct {
+	Enable bool `json:"enable,omitempty"`
+
+	// KeyTab is the Kubernetes secret containing the Kerberos KeyTab contents.
+	KeyTab SecretValueFromSource `json:"keytab,omitempty"`
+
+	// Principal is the Kubernetes secret containing the Kerberos principal.
+	Principal SecretValueFromSource `json:"principal,omitempty"`
+
+	// Config is the Kubernetes secret containing the Kerberos Config fiel contents.
+	Config SecretValueFromSource `json:"config,omitempty"`
+
+	// Service is the Kubernetes secret containing the Kerberos Service configured for Kafka.
+	Service SecretValueFromSource `json:"service,omitempty"`
+
+	// Realm is the Kubernetes secret containing the Kerberos Realm.
+	Realm SecretValueFromSource `json:"realm,omitempty"`
+
+	// Username is the Kubernetes secret containing the Kerberos user.
+	Username SecretValueFromSource `json:"username,omitempty"`
+
+	// Password is the Kubernetes secret containing the Kerberos password for the user.
+	Password SecretValueFromSource `json:"password,omitempty"`
+}
+
 type KafkaTLSSpec struct {
 	Enable bool `json:"enable,omitempty"`
 
@@ -83,8 +109,9 @@ type SecretValueFromSource struct {
 }
 
 type KafkaNetSpec struct {
-	SASL KafkaSASLSpec `json:"sasl,omitempty"`
-	TLS  KafkaTLSSpec  `json:"tls,omitempty"`
+	SASL   KafkaSASLSpec       `json:"sasl,omitempty"`
+	TLS    KafkaTLSSpec        `json:"tls,omitempty"`
+	GSSAPI KafkaSASLGSSAPISpec `json:"gssapi,omitempty"`
 }
 
 type KafkaAuthSpec struct {

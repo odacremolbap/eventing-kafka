@@ -18,6 +18,7 @@ package client
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
@@ -39,6 +40,20 @@ type AdapterSASL struct {
 	Type     string `envconfig:"KAFKA_NET_SASL_TYPE" required:"false"`
 }
 
+type AdapterGSSAPI struct {
+	Enable          bool   `envconfig:"KAFKA_NET_SASL_KERBEROS_ENABLE" required:"false"`
+	KeyTabBase64    string `envconfig:"KAFKA_NET_SASL_KERBEROS_KEYTAB_B64" required:"false"`
+	KeyTabFile      string `envconfig:"KAFKA_NET_SASL_KERBEROS_KEYTAB_FILE" required:"false"`
+	Principal       string `envconfig:"KAFKA_NET_SASL_KERBEROS_PRINCIPAL" required:"false"`
+	ConfigBase64    string `envconfig:"KAFKA_NET_SASL_KERBEROS_CONFIG_B64" required:"false"`
+	ConfigFile      string `envconfig:"KAFKA_NET_SASL_KERBEROS_CONFIG_FILE" required:"false"`
+	Service         string `envconfig:"KAFKA_NET_SASL_KERBEROS_SERVICE" required:"false"`
+	Realm           string `envconfig:"KAFKA_NET_SASL_KERBEROS_REALM" required:"false"`
+	Username        string `envconfig:"KAFKA_NET_SASL_KERBEROS_USERNAME" required:"false"`
+	Password        string `envconfig:"KAFKA_NET_SASL_KERBEROS_PASSWORD" required:"false"`
+	DisablePAFXFAST bool   `envconfig:"KAFKA_NET_SASL_KERBEROS_DISABLE_PAFXFAST" default:"false"`
+}
+
 type AdapterTLS struct {
 	Enable bool   `envconfig:"KAFKA_NET_TLS_ENABLE" required:"false"`
 	Cert   string `envconfig:"KAFKA_NET_TLS_CERT" required:"false"`
@@ -47,8 +62,9 @@ type AdapterTLS struct {
 }
 
 type AdapterNet struct {
-	SASL AdapterSASL
-	TLS  AdapterTLS
+	SASL   AdapterSASL
+	TLS    AdapterTLS
+	GSSAPI AdapterGSSAPI
 }
 
 type KafkaConfig struct {
@@ -92,6 +108,37 @@ func NewConfigWithEnv(ctx context.Context, env *KafkaEnvConfig) ([]string, *sara
 			Password: env.Net.SASL.Password,
 			SaslType: env.Net.SASL.Type,
 		}
+	}
+
+	if env.Net.GSSAPI.Enable {
+
+		kafkaAuthConfig.GSSAPI = &client.KafkaSaslGSSAPI{
+			KeyTabFile:      env.Net.GSSAPI.KeyTabFile,
+			Principal:       env.Net.GSSAPI.Principal,
+			ConfigFile:      env.Net.GSSAPI.ConfigFile,
+			ServiceName:     env.Net.GSSAPI.Service,
+			Realm:           env.Net.GSSAPI.Realm,
+			Username:        env.Net.GSSAPI.Username,
+			Password:        env.Net.GSSAPI.Password,
+			DisablePAFXFAST: env.Net.GSSAPI.DisablePAFXFAST,
+		}
+
+		if len(env.Net.GSSAPI.KeyTabBase64) != 0 {
+			keytab, err := base64.StdEncoding.DecodeString(env.Net.GSSAPI.KeyTabBase64)
+			if err != nil {
+				return nil, nil, fmt.Errorf("error parsing KeyTab from Base64: %w", err)
+			}
+			kafkaAuthConfig.GSSAPI.KeyTab = keytab
+		}
+
+		if len(env.Net.GSSAPI.ConfigBase64) != 0 {
+			config, err := base64.StdEncoding.DecodeString(env.Net.GSSAPI.ConfigBase64)
+			if err != nil {
+				return nil, nil, fmt.Errorf("error parsing KeyTab from Base64: %w", err)
+			}
+			kafkaAuthConfig.GSSAPI.Config = string(config)
+		}
+
 	}
 
 	configBuilder := client.NewConfigBuilder().
@@ -143,6 +190,31 @@ func NewEnvConfigFromSpec(ctx context.Context, kc kubernetes.Interface, obj *sou
 		return KafkaEnvConfig{}, err
 	}
 
+	// kerberosKeyTab, err := resolveSecret(ctx, kc, obj.Namespace, obj.Spec.Net.GSSAPI.KeyTab.SecretKeyRef)
+	// if err != nil {
+	// 	return KafkaEnvConfig{}, err
+	// }
+
+	// kerberosPrincipal, err := resolveSecret(ctx, kc, obj.Namespace, obj.Spec.Net.GSSAPI.Principal.SecretKeyRef)
+	// if err != nil {
+	// 	return KafkaEnvConfig{}, err
+	// }
+
+	// kerberosConfig, err := resolveSecret(ctx, kc, obj.Namespace, obj.Spec.Net.GSSAPI.Config.SecretKeyRef)
+	// if err != nil {
+	// 	return KafkaEnvConfig{}, err
+	// }
+
+	// kerberosService, err := resolveSecret(ctx, kc, obj.Namespace, obj.Spec.Net.GSSAPI.Service.SecretKeyRef)
+	// if err != nil {
+	// 	return KafkaEnvConfig{}, err
+	// }
+
+	// kerberosRealm, err := resolveSecret(ctx, kc, obj.Namespace, obj.Spec.Net.GSSAPI.Realm.SecretKeyRef)
+	// if err != nil {
+	// 	return KafkaEnvConfig{}, err
+	// }
+
 	tlsCert, err := resolveSecret(ctx, kc, obj.Namespace, obj.Spec.Net.TLS.Cert.SecretKeyRef)
 	if err != nil {
 		return KafkaEnvConfig{}, err
@@ -167,6 +239,12 @@ func NewEnvConfigFromSpec(ctx context.Context, kc kubernetes.Interface, obj *sou
 				User:     saslUser,
 				Password: saslPassword,
 				Type:     saslType,
+			},
+			GSSAPI: AdapterGSSAPI{
+				Enable: obj.Spec.Net.GSSAPI.Enable,
+
+				// TODO kafka client configuration and building seems scattered all around
+				// in different shapes. This is being hard to figure out
 			},
 			TLS: AdapterTLS{
 				Enable: obj.Spec.Net.TLS.Enable,

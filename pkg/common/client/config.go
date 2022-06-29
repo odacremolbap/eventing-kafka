@@ -18,9 +18,12 @@ package client
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -34,8 +37,9 @@ import (
 )
 
 type KafkaAuthConfig struct {
-	TLS  *KafkaTlsConfig
-	SASL *KafkaSaslConfig
+	TLS    *KafkaTlsConfig
+	SASL   *KafkaSaslConfig
+	GSSAPI *KafkaSaslGSSAPI
 }
 
 type KafkaTlsConfig struct {
@@ -48,6 +52,19 @@ type KafkaSaslConfig struct {
 	User     string
 	Password string
 	SaslType string
+}
+
+type KafkaSaslGSSAPI struct {
+	KeyTab          []byte
+	KeyTabFile      string
+	Config          string
+	ConfigFile      string
+	Principal       string
+	ServiceName     string
+	Username        string
+	Password        string
+	Realm           string
+	DisablePAFXFAST bool
 }
 
 // HasSameSettings returns true if all of the SASL settings in the provided config are the same as in this struct
@@ -264,6 +281,50 @@ func (b *configBuilder) Build(ctx context.Context) (*sarama.Config, error) {
 				config.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
 			}
 			config.Net.SASL.User = b.auth.SASL.User
+		}
+
+		if b.auth.GSSAPI != nil {
+
+			if len(b.auth.GSSAPI.KeyTab) != 0 && b.auth.GSSAPI.KeyTabFile == "" {
+				file := sha256.Sum256(b.auth.GSSAPI.KeyTab)
+				dir := os.TempDir()
+				b.auth.GSSAPI.KeyTabFile = filepath.Join(dir, string(file[:]))
+
+				// create if it doesn't exists
+				if _, err := os.Stat(b.auth.GSSAPI.KeyTabFile); err != nil {
+					os.WriteFile(b.auth.GSSAPI.KeyTabFile, b.auth.GSSAPI.KeyTab, 0644)
+				}
+			}
+
+			if b.auth.GSSAPI.Config != "" && b.auth.GSSAPI.ConfigFile == "" {
+				bc := []byte(b.auth.GSSAPI.Config)
+				file := sha256.Sum256(bc)
+				dir := os.TempDir()
+				b.auth.GSSAPI.ConfigFile = filepath.Join(dir, string(file[:]))
+
+				// create if it doesn't exists
+				if _, err := os.Stat(b.auth.GSSAPI.ConfigFile); err != nil {
+					os.WriteFile(b.auth.GSSAPI.ConfigFile, bc, 0644)
+				}
+			}
+
+			config.Net.SASL.GSSAPI = sarama.GSSAPIConfig{
+				AuthType:           sarama.KRB5_KEYTAB_AUTH,
+				KeyTabPath:         b.auth.GSSAPI.KeyTabFile,
+				KerberosConfigPath: b.auth.GSSAPI.ConfigFile,
+				ServiceName:        b.auth.GSSAPI.ServiceName,
+				Password:           b.auth.GSSAPI.Password,
+				Realm:              b.auth.GSSAPI.Realm,
+				DisablePAFXFAST:    b.auth.GSSAPI.DisablePAFXFAST,
+			}
+
+			switch {
+			case b.auth.GSSAPI.Username != "":
+				config.Net.SASL.GSSAPI.Username = b.auth.GSSAPI.Username
+			case b.auth.GSSAPI.Principal != "":
+				config.Net.SASL.GSSAPI.Username = b.auth.GSSAPI.Principal
+			}
+
 		}
 	}
 

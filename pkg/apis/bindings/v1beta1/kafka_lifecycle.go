@@ -18,6 +18,7 @@ package v1beta1
 
 import (
 	"context"
+	"path"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -83,7 +84,48 @@ func (kfb *KafkaBinding) Do(ctx context.Context, ps *duckv1.WithPod) {
 	kfb.Undo(ctx, ps)
 
 	spec := ps.Spec.Template.Spec
+
+	if kfb.Spec.Net.GSSAPI.Enable {
+
+		if kfb.Spec.Net.GSSAPI.KeyTab.SecretKeyRef != nil {
+			keytab := corev1.Volume{
+				Name: "krb5.keytab",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: kfb.Spec.Net.GSSAPI.KeyTab.SecretKeyRef.Name,
+						Items: []corev1.KeyToPath{
+							{
+								Key:  kfb.Spec.Net.GSSAPI.KeyTab.SecretKeyRef.Key,
+								Path: "krb5.keytab",
+							},
+						},
+					},
+				},
+			}
+			spec.Volumes = append(spec.Volumes, keytab)
+		}
+
+		if kfb.Spec.Net.GSSAPI.Config.SecretKeyRef != nil {
+			config := corev1.Volume{
+				Name: "krb5.conf",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: kfb.Spec.Net.GSSAPI.Config.SecretKeyRef.Name,
+						Items: []corev1.KeyToPath{
+							{
+								Key:  kfb.Spec.Net.GSSAPI.Config.SecretKeyRef.Key,
+								Path: "krb5.conf",
+							},
+						},
+					},
+				},
+			}
+			spec.Volumes = append(spec.Volumes, config)
+		}
+	}
+
 	for i := range spec.InitContainers {
+
 		spec.InitContainers[i].Env = append(spec.InitContainers[i].Env, corev1.EnvVar{
 			Name:  "KAFKA_BOOTSTRAP_SERVERS",
 			Value: strings.Join(kfb.Spec.BootstrapServers, ","),
@@ -109,6 +151,66 @@ func (kfb *KafkaBinding) Do(ctx context.Context, ps *duckv1.WithPod) {
 				},
 			})
 		}
+
+		if kfb.Spec.Net.GSSAPI.Enable {
+
+			if kfb.Spec.Net.GSSAPI.KeyTab.SecretKeyRef != nil {
+				keytab := corev1.VolumeMount{
+					Name:      "krb5.keytab",
+					MountPath: "/etc/",
+				}
+				spec.InitContainers[i].VolumeMounts = append(spec.InitContainers[i].VolumeMounts, keytab)
+
+				spec.InitContainers[i].Env = append(spec.InitContainers[i].Env, corev1.EnvVar{
+					Name:  "KAFKA_NET_SASL_KERBEROS_KEYTAB_FILE",
+					Value: path.Join(keytab.MountPath, keytab.Name),
+				})
+			}
+
+			if kfb.Spec.Net.GSSAPI.Config.SecretKeyRef != nil {
+				config := corev1.VolumeMount{
+					Name:      "krb5.conf",
+					MountPath: "/etc/",
+				}
+				spec.InitContainers[i].VolumeMounts = append(spec.InitContainers[i].VolumeMounts, config)
+
+				spec.InitContainers[i].Env = append(spec.InitContainers[i].Env, corev1.EnvVar{
+					Name:  "KAFKA_NET_SASL_KERBEROS_CONFIG_FILE",
+					Value: path.Join(config.MountPath, config.Name),
+				})
+			}
+
+			spec.InitContainers[i].Env = append(spec.InitContainers[i].Env, corev1.EnvVar{
+				Name:  "KAFKA_NET_SASL_KERBEROS_ENABLE",
+				Value: "true",
+			}, corev1.EnvVar{
+				Name: "KAFKA_NET_SASL_KERBEROS_PRINCIPAL",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: kfb.Spec.Net.GSSAPI.Principal.SecretKeyRef,
+				},
+			}, corev1.EnvVar{
+				Name: "KAFKA_NET_SASL_KERBEROS_SERVICE",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: kfb.Spec.Net.GSSAPI.Service.SecretKeyRef,
+				},
+			}, corev1.EnvVar{
+				Name: "KAFKA_NET_SASL_KERBEROS_REALM",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: kfb.Spec.Net.GSSAPI.Realm.SecretKeyRef,
+				},
+			}, corev1.EnvVar{
+				Name: "KAFKA_NET_SASL_KERBEROS_USERNAME",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: kfb.Spec.Net.GSSAPI.Username.SecretKeyRef,
+				},
+			}, corev1.EnvVar{
+				Name: "KAFKA_NET_SASL_KERBEROS_PASSWORD",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: kfb.Spec.Net.GSSAPI.Password.SecretKeyRef,
+				},
+			})
+		}
+
 		if kfb.Spec.Net.TLS.Enable {
 			spec.InitContainers[i].Env = append(spec.InitContainers[i].Env, corev1.EnvVar{
 				Name:  "KAFKA_NET_TLS_ENABLE",
@@ -159,6 +261,66 @@ func (kfb *KafkaBinding) Do(ctx context.Context, ps *duckv1.WithPod) {
 				},
 			})
 		}
+
+		if kfb.Spec.Net.GSSAPI.Enable {
+
+			if kfb.Spec.Net.GSSAPI.KeyTab.SecretKeyRef != nil {
+				keytab := corev1.VolumeMount{
+					Name:      "krb5.keytab",
+					MountPath: "/etc/",
+				}
+				spec.Containers[i].VolumeMounts = append(spec.Containers[i].VolumeMounts, keytab)
+
+				spec.Containers[i].Env = append(spec.Containers[i].Env, corev1.EnvVar{
+					Name:  "KAFKA_NET_SASL_KERBEROS_KEYTAB_FILE",
+					Value: path.Join(keytab.MountPath, keytab.Name),
+				})
+			}
+
+			if kfb.Spec.Net.GSSAPI.Config.SecretKeyRef != nil {
+				config := corev1.VolumeMount{
+					Name:      "krb5.conf",
+					MountPath: "/etc/",
+				}
+				spec.Containers[i].VolumeMounts = append(spec.Containers[i].VolumeMounts, config)
+
+				spec.Containers[i].Env = append(spec.Containers[i].Env, corev1.EnvVar{
+					Name:  "KAFKA_NET_SASL_KERBEROS_CONFIG_FILE",
+					Value: path.Join(config.MountPath, config.Name),
+				})
+			}
+
+			spec.Containers[i].Env = append(spec.Containers[i].Env, corev1.EnvVar{
+				Name:  "KAFKA_NET_SASL_KERBEROS_ENABLE",
+				Value: "true",
+			}, corev1.EnvVar{
+				Name: "KAFKA_NET_SASL_KERBEROS_PRINCIPAL",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: kfb.Spec.Net.GSSAPI.Principal.SecretKeyRef,
+				},
+			}, corev1.EnvVar{
+				Name: "KAFKA_NET_SASL_KERBEROS_SERVICE",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: kfb.Spec.Net.GSSAPI.Service.SecretKeyRef,
+				},
+			}, corev1.EnvVar{
+				Name: "KAFKA_NET_SASL_KERBEROS_REALM",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: kfb.Spec.Net.GSSAPI.Realm.SecretKeyRef,
+				},
+			}, corev1.EnvVar{
+				Name: "KAFKA_NET_SASL_KERBEROS_USERNAME",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: kfb.Spec.Net.GSSAPI.Username.SecretKeyRef,
+				},
+			}, corev1.EnvVar{
+				Name: "KAFKA_NET_SASL_KERBEROS_PASSWORD",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: kfb.Spec.Net.GSSAPI.Password.SecretKeyRef,
+				},
+			})
+		}
+
 		if kfb.Spec.Net.TLS.Enable {
 			spec.Containers[i].Env = append(spec.Containers[i].Env, corev1.EnvVar{
 				Name:  "KAFKA_NET_TLS_ENABLE",
@@ -194,8 +356,11 @@ func (kfb *KafkaBinding) Undo(ctx context.Context, ps *duckv1.WithPod) {
 		for j, ev := range c.Env {
 			switch ev.Name {
 			case "KAFKA_NET_TLS_ENABLE", "KAFKA_NET_TLS_CERT", "KAFKA_NET_TLS_KEY", "KAFKA_NET_TLS_CA_CERT",
-				"KAFKA_NET_SASL_ENABLE", "KAFKA_NET_SASL_USER", "KAFKA_NET_SASL_PASSWORD", "KAFKA_NET_SASL_TYPE",
-				"KAFKA_BOOTSTRAP_SERVERS":
+				"KAFKA_NET_SASL_ENABLE", "KAFKA_NET_SASL_USER", "KAFKA_NET_SASL_PASSWORD",
+				"KAFKA_NET_SASL_KERBEROS_ENABLE", "KAFKA_NET_SASL_KERBEROS_KEYTAB_FILE", "KAFKA_NET_SASL_KERBEROS_CONFIG_FILE",
+				"KAFKA_NET_SASL_KERBEROS_PRINCIPAL", "KAFKA_NET_SASL_KERBEROS_SERVICE", "KAFKA_NET_SASL_KERBEROS_REALM",
+				"KAFKA_NET_SASL_KERBEROS_USERNAME", "KAFKA_NET_SASL_KERBEROS_PASSWORD",
+				"KAFKA_NET_SASL_TYPE", "KAFKA_BOOTSTRAP_SERVERS":
 
 				continue
 			default:
@@ -213,8 +378,11 @@ func (kfb *KafkaBinding) Undo(ctx context.Context, ps *duckv1.WithPod) {
 		for j, ev := range c.Env {
 			switch ev.Name {
 			case "KAFKA_NET_TLS_ENABLE", "KAFKA_NET_TLS_CERT", "KAFKA_NET_TLS_KEY", "KAFKA_NET_TLS_CA_CERT",
-				"KAFKA_NET_SASL_ENABLE", "KAFKA_NET_SASL_USER", "KAFKA_NET_SASL_PASSWORD", "KAFKA_NET_SASL_TYPE",
-				"KAFKA_BOOTSTRAP_SERVERS":
+				"KAFKA_NET_SASL_ENABLE", "KAFKA_NET_SASL_USER", "KAFKA_NET_SASL_PASSWORD",
+				"KAFKA_NET_SASL_KERBEROS_ENABLE", "KAFKA_NET_SASL_KERBEROS_KEYTAB_FILE", "KAFKA_NET_SASL_KERBEROS_CONFIG_FILE",
+				"KAFKA_NET_SASL_KERBEROS_PRINCIPAL", "KAFKA_NET_SASL_KERBEROS_SERVICE", "KAFKA_NET_SASL_KERBEROS_REALM",
+				"KAFKA_NET_SASL_KERBEROS_USERNAME", "KAFKA_NET_SASL_KERBEROS_PASSWORD",
+				"KAFKA_NET_SASL_TYPE", "KAFKA_BOOTSTRAP_SERVERS":
 				continue
 			default:
 				env = append(env, spec.Containers[i].Env[j])
